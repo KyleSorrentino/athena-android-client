@@ -6,8 +6,10 @@ import androidx.lifecycle.viewModelScope
 import com.athena.client.data.ApiClient
 import com.athena.client.data.models.PromptRequest
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CancellationException
@@ -43,6 +45,18 @@ class MainViewModel : ViewModel() {
     private val _uiState = MutableStateFlow(UiState())
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
 
+    val isConnected: StateFlow<Boolean> = ApiClient.isConnected
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    init {
+        ApiClient.startHealthChecks()
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        ApiClient.stopHealthChecks()
+    }
+
     fun setListening(listening: Boolean) {
         _uiState.update { it.copy(isListening = listening) }
     }
@@ -52,7 +66,12 @@ class MainViewModel : ViewModel() {
             _uiState.update { it.copy(isLoadingVoices = true) }
             
             try {
-                val api = ApiClient.checkAndSelectApi()
+                val api = ApiClient.getApi()
+                if (api == null) {
+                    Log.w(TAG, "No healthy server available for fetching voices")
+                    _uiState.update { it.copy(isLoadingVoices = false) }
+                    return@launch
+                }
                 val response = api.getVoices()
                 _uiState.update { it.copy(voices = response.voices, isLoadingVoices = false) }
             } catch (e: CancellationException) {
@@ -75,7 +94,18 @@ class MainViewModel : ViewModel() {
             _uiState.update { it.copy(isLoading = true, error = null) }
             
             try {
-                val api = ApiClient.checkAndSelectApi()
+                val api = ApiClient.getApi()
+                if (api == null) {
+                    Log.w(TAG, "No healthy server available")
+                    _uiState.update { 
+                        it.copy(
+                            isLoading = false,
+                            error = "No server available. Please wait for connection."
+                        )
+                    }
+                    return@launch
+                }
+                
                 val currentVoice = _uiState.value.selectedVoice
                 val useVoice = currentVoice != VOICE_NONE
                 

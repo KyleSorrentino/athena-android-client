@@ -27,13 +27,8 @@ android {
 
         buildConfigField(
             "String",
-            "API_URL",
-            "\"${localProperties.getProperty("api.url", "https://athena.example.com")}\""
-        )
-        buildConfigField(
-            "String",
-            "API_URL_FALLBACK",
-            "\"${localProperties.getProperty("api.url.fallback", "")}\""
+            "API_SERVERS",
+            "\"${localProperties.getProperty("api.servers", "https://athena.example.com")}\""
         )
         buildConfigField(
             "String",

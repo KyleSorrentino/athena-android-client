@@ -12,7 +12,8 @@ A minimalistic Android voice assistant client for Athena. Speak to the app, and 
 - Replay button for each response with audio
 - Animated "Thinking..." indicator while waiting
 - Keeps screen awake during loading and audio playback
-- Fallback URL support with automatic health checks
+- Multi-server support with continuous health monitoring (polls every 5 seconds)
+- Connection status indicator with automatic retry
 - Memory-only conversation history (cleared on app restart)
 - Portrait orientation only
 - Dark theme by default
@@ -37,12 +38,11 @@ cd athena-android-client
 Create a `local.properties` file in the project root with your Athena server details:
 
 ```properties
-api.url=https://your-athena-server.com
-api.url.fallback=http://your-internal-server.local
+api.servers=https://your-athena-server.com,http://fallback-server.local
 api.token=your-auth-token
 ```
 
-The fallback URL is optional - if the primary URL health check fails, the app will automatically switch to the fallback.
+Multiple servers can be specified as a comma-separated list. The app continuously polls all servers' `/health` endpoints every 5 seconds and selects the first healthy server from the list when making requests. If all servers are down, the UI shows a connection error and disables input until a server becomes available.
 
 > **Security Note**: The `local.properties` file is gitignored and should never be committed. The API credentials are baked into the APK at build time. This approach is suitable for personal use only.
 
@@ -215,4 +215,3 @@ MIT License - See [LICENSE](LICENSE) for details.
 
 **TODO**:
 - Implement proper multi-user authentication support instead of baked-in credentials
-- Add a custom app icon

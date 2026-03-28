@@ -42,6 +42,3 @@ signing.properties
 
 # Project context
 .eca/
-
-# Branding (for now)
-logo.png

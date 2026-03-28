@@ -4,15 +4,23 @@ import android.Manifest
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -56,6 +64,7 @@ fun MainScreen(
     val context = LocalContext.current
     val view = LocalView.current
     val uiState by viewModel.uiState.collectAsState()
+    val isConnected by viewModel.isConnected.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val listState = rememberLazyListState()
     
@@ -226,38 +235,77 @@ fun MainScreen(
                 }
             }
             
-            Row(
+            Column(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .padding(bottom = 24.dp),
-                verticalAlignment = Alignment.CenterVertically
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                MicButton(
-                    isListening = uiState.isListening,
-                    isProcessing = uiState.isLoading || !speechAvailable,
-                    onClick = {
-                        if (!speechAvailable) return@MicButton
-                        
-                        if (!hasPermission) {
-                            permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                            return@MicButton
-                        }
-                        
-                        if (uiState.isListening) {
-                            speechRecognizer.stopListening()
-                        } else if (!uiState.isLoading) {
-                            speechRecognizer.startListening()
-                        }
+                // Connection error banner
+                if (!isConnected) {
+                    Row(
+                        modifier = Modifier
+                            .padding(bottom = 16.dp)
+                            .background(
+                                color = MaterialTheme.colorScheme.errorContainer,
+                                shape = MaterialTheme.shapes.medium
+                            )
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.CloudOff,
+                            contentDescription = "Disconnected",
+                            tint = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Connection issue",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onErrorContainer
+                        )
                     }
-                )
-                Spacer(modifier = Modifier.width(16.dp))
-                VoiceSelector(
-                    selectedVoice = uiState.selectedVoice,
-                    voices = uiState.voices,
-                    isLoading = uiState.isLoadingVoices,
-                    onExpand = { viewModel.fetchVoices() },
-                    onVoiceSelected = { viewModel.setSelectedVoice(it) }
-                )
+                }
+                
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    MicButton(
+                        isListening = uiState.isListening,
+                        isProcessing = uiState.isLoading || !speechAvailable || !isConnected,
+                        onClick = {
+                            if (!isConnected) return@MicButton
+                            if (!speechAvailable) return@MicButton
+                            
+                            if (!hasPermission) {
+                                permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                return@MicButton
+                            }
+                            
+                            if (uiState.isListening) {
+                                speechRecognizer.stopListening()
+                            } else if (!uiState.isLoading) {
+                                speechRecognizer.startListening()
+                            }
+                        }
+                    )
+                    Spacer(modifier = Modifier.width(16.dp))
+                    VoiceSelector(
+                        selectedVoice = uiState.selectedVoice,
+                        voices = uiState.voices,
+                        isLoading = uiState.isLoadingVoices,
+                        onExpand = { if (isConnected) viewModel.fetchVoices() },
+                        onVoiceSelected = { viewModel.setSelectedVoice(it) },
+                        enabled = isConnected
+                    )
+                }
             }
         }
     }

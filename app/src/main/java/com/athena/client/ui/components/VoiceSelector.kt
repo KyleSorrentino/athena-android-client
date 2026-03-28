@@ -40,7 +40,8 @@ fun VoiceSelector(
     isLoading: Boolean,
     onExpand: () -> Unit,
     onVoiceSelected: (String?) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true
 ) {
     var expanded by remember { mutableStateOf(false) }
     val isVoiceDisabled = selectedVoice == VOICE_NONE
@@ -50,13 +51,15 @@ fun VoiceSelector(
         selectedVoice != null -> selectedVoice
         else -> "Default"
     }
+    
+    val contentAlpha = if (enabled) 1f else 0.5f
 
     Box(modifier = modifier) {
         Row(
             modifier = Modifier
                 .clip(RoundedCornerShape(24.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant)
-                .clickable {
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = contentAlpha))
+                .clickable(enabled = enabled) {
                     onExpand()
                     expanded = true
                 }
@@ -67,7 +70,7 @@ fun VoiceSelector(
                 imageVector = if (isVoiceDisabled) Icons.Filled.VoiceOverOff else Icons.Filled.RecordVoiceOver,
                 contentDescription = "Voice",
                 modifier = Modifier.size(20.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = contentAlpha)
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(

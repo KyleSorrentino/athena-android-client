@@ -3,6 +3,15 @@ package com.athena.client.data
 import android.util.Log
 import com.athena.client.BuildConfig
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
@@ -11,8 +20,14 @@ import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import java.util.concurrent.TimeUnit
 
+data class ServerStatus(
+    val url: String,
+    val isHealthy: Boolean
+)
+
 object ApiClient {
     private const val TAG = "ApiClient"
+    private const val HEALTH_CHECK_INTERVAL_MS = 5_000L
     
     private val json = Json {
         ignoreUnknownKeys = true
@@ -37,62 +52,114 @@ object ApiClient {
         redactHeader("Authorization")
     }
 
-    private val okHttpClient = OkHttpClient.Builder()
+    private val healthCheckClient = OkHttpClient.Builder()
+        .addInterceptor(authInterceptor)
+        .connectTimeout(3, TimeUnit.SECONDS)
+        .readTimeout(3, TimeUnit.SECONDS)
+        .writeTimeout(3, TimeUnit.SECONDS)
+        .build()
+
+    private val apiClient = OkHttpClient.Builder()
         .addInterceptor(authInterceptor)
         .addInterceptor(loggingInterceptor)
-        .connectTimeout(5, TimeUnit.SECONDS)
+        .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(120, TimeUnit.SECONDS)
         .writeTimeout(30, TimeUnit.SECONDS)
         .build()
 
-    private val primaryUrl = BuildConfig.API_URL.trimEnd('/') + "/"
-    private val fallbackUrl = BuildConfig.API_URL_FALLBACK.takeIf { it.isNotBlank() }?.trimEnd('/')?.plus("/")
+    private val serverUrls: List<String> = BuildConfig.API_SERVERS
+        .split(",")
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .map { it.trimEnd('/') + "/" }
 
-    private fun createApi(baseUrl: String): AthenaApi {
+    private val serverApis: Map<String, AthenaApi> = serverUrls.associateWith { url ->
+        createApi(url, apiClient)
+    }
+
+    private val healthCheckApis: Map<String, AthenaApi> = serverUrls.associateWith { url ->
+        createApi(url, healthCheckClient)
+    }
+
+    private fun createApi(baseUrl: String, client: OkHttpClient): AthenaApi {
         return Retrofit.Builder()
             .baseUrl(baseUrl)
-            .client(okHttpClient)
+            .client(client)
             .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
             .build()
             .create(AthenaApi::class.java)
     }
 
-    private val primaryApi: AthenaApi = createApi(primaryUrl)
-    private val fallbackApi: AthenaApi? = fallbackUrl?.let { createApi(it) }
+    private val _serverStatuses = MutableStateFlow<List<ServerStatus>>(
+        serverUrls.map { ServerStatus(it, false) }
+    )
+    val serverStatuses: StateFlow<List<ServerStatus>> = _serverStatuses.asStateFlow()
+
+    private val _isConnected = MutableStateFlow(false)
+    val isConnected: StateFlow<Boolean> = _isConnected.asStateFlow()
 
     @Volatile
-    private var currentApi: AthenaApi = primaryApi
-    
-    @Volatile
-    private var lastHealthCheckTime: Long = 0
-    
-    private const val HEALTH_CHECK_INTERVAL_MS = 30_000L
+    private var currentHealthyUrl: String? = null
 
-    val api: AthenaApi
-        get() = currentApi
+    private var healthCheckJob: Job? = null
+    private val scope = CoroutineScope(Dispatchers.IO)
 
-    suspend fun checkAndSelectApi(): AthenaApi {
-        val now = System.currentTimeMillis()
-        if (now - lastHealthCheckTime < HEALTH_CHECK_INTERVAL_MS) {
-            return currentApi
-        }
+    fun startHealthChecks() {
+        if (healthCheckJob?.isActive == true) return
         
-        lastHealthCheckTime = now
-        
-        try {
-            Log.d(TAG, "Health checking primary URL: $primaryUrl")
-            primaryApi.health()
-            Log.d(TAG, "Primary URL healthy")
-            currentApi = primaryApi
-            return primaryApi
-        } catch (e: Exception) {
-            Log.w(TAG, "Primary URL health check failed: ${e.message}")
-            if (fallbackApi != null) {
-                Log.d(TAG, "Switching to fallback URL: $fallbackUrl")
-                currentApi = fallbackApi
-                return fallbackApi
+        Log.d(TAG, "Starting health checks for ${serverUrls.size} servers")
+        healthCheckJob = scope.launch {
+            while (true) {
+                checkAllServers()
+                delay(HEALTH_CHECK_INTERVAL_MS)
             }
-            throw e
         }
+    }
+
+    fun stopHealthChecks() {
+        Log.d(TAG, "Stopping health checks")
+        healthCheckJob?.cancel()
+        healthCheckJob = null
+    }
+
+    private suspend fun checkAllServers() {
+        val statuses = serverUrls.map { url ->
+            val isHealthy = checkServerHealth(url)
+            ServerStatus(url, isHealthy)
+        }
+        
+        _serverStatuses.value = statuses
+        
+        val firstHealthy = statuses.firstOrNull { it.isHealthy }?.url
+        currentHealthyUrl = firstHealthy
+        _isConnected.value = firstHealthy != null
+        
+        if (firstHealthy != null) {
+            Log.d(TAG, "Active server: $firstHealthy")
+        } else {
+            Log.w(TAG, "No healthy servers available")
+        }
+    }
+
+    private suspend fun checkServerHealth(url: String): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                healthCheckApis[url]?.health()
+                Log.d(TAG, "Health check passed: $url")
+                true
+            } catch (e: Exception) {
+                Log.d(TAG, "Health check failed: $url - ${e.message}")
+                false
+            }
+        }
+    }
+
+    fun getApi(): AthenaApi? {
+        val url = currentHealthyUrl ?: return null
+        return serverApis[url]
+    }
+
+    fun getApiOrThrow(): AthenaApi {
+        return getApi() ?: throw IllegalStateException("No healthy servers available")
     }
 }
