@@ -6,9 +6,13 @@ A minimalistic Android voice assistant client for Athena. Speak to the app, and 
 
 - Voice input via Android SpeechRecognizer
 - Voice selection dropdown (re-queries available voices on each click)
+- "None" option for text-only responses (no audio)
 - Markdown-formatted text responses
-- Audio playback for each response (with replay button)
+- Auto-plays audio when response arrives
+- Replay button for each response with audio
 - Animated "Thinking..." indicator while waiting
+- Keeps screen awake during loading and audio playback
+- Fallback URL support with automatic health checks
 - Memory-only conversation history (cleared on app restart)
 - Portrait orientation only
 - Dark theme by default
@@ -34,8 +38,11 @@ Create a `local.properties` file in the project root with your Athena server det
 
 ```properties
 api.url=https://your-athena-server.com
+api.url.fallback=http://your-internal-server.local
 api.token=your-auth-token
 ```
+
+The fallback URL is optional - if the primary URL health check fails, the app will automatically switch to the fallback.
 
 > **Security Note**: The `local.properties` file is gitignored and should never be committed. The API credentials are baked into the APK at build time. This approach is suitable for personal use only.
 
@@ -67,7 +74,7 @@ make install
 | `make uninstall` | Uninstall app from connected device |
 | `make clean` | Clean build artifacts |
 | `make docker-clean` | Remove Docker build image |
-| `make icons` | Regenerate app icons from icon.png |
+| `make icons` | Regenerate app icons from logo.png |
 
 ## Project Structure
 
@@ -196,10 +203,16 @@ signing.keyPassword=your-key-password
 2. Verify the server is returning audio in the response
 3. Check logcat for AudioPlayer errors
 
+## Credits
+
+App icon generated with [Easy-Peasy.AI](https://easy-peasy.ai/ai-image-generator/images/pegatina-sobre-ai-d0ee6d86-5dec-4a7f-b17d-f011196a078c).
+
 ## License
 
 MIT License - See [LICENSE](LICENSE) for details.
 
 ---
 
-> **TODO**: Implement proper multi-user authentication support instead of baked-in credentials.
+**TODO**:
+- Implement proper multi-user authentication support instead of baked-in credentials
+- Add a custom app icon
