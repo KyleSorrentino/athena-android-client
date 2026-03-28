@@ -2,6 +2,8 @@ package com.athena.client.ui
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.media.ToneGenerator
+import android.media.AudioManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -17,8 +19,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.Error
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.foundation.lazy.LazyColumn
@@ -121,12 +126,6 @@ fun MainScreen(
         }
     }
     
-    LaunchedEffect(uiState.error) {
-        uiState.error?.let { error ->
-            snackbarHostState.showSnackbar(error)
-            viewModel.clearError()
-        }
-    }
     
     // Track previous response count for auto-play
     var previousResponseCount by remember { mutableStateOf(0) }
@@ -241,6 +240,61 @@ fun MainScreen(
                     .padding(bottom = 24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
+                // Request error banner (fades after 15 seconds, or tap X)
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = uiState.error != null,
+                    enter = androidx.compose.animation.fadeIn(),
+                    exit = androidx.compose.animation.fadeOut()
+                ) {
+                    uiState.error?.let { error ->
+                        LaunchedEffect(error) {
+                            // Play error sound
+                            try {
+                                val toneGenerator = ToneGenerator(AudioManager.STREAM_NOTIFICATION, 100)
+                                toneGenerator.startTone(ToneGenerator.TONE_PROP_NACK, 200)
+                                kotlinx.coroutines.delay(300)
+                                toneGenerator.release()
+                            } catch (e: Exception) {
+                                // Ignore if tone can't be played
+                            }
+                            kotlinx.coroutines.delay(15000)
+                            viewModel.clearError()
+                        }
+                        Row(
+                            modifier = Modifier
+                                .padding(bottom = 16.dp)
+                                .background(
+                                    color = MaterialTheme.colorScheme.error,
+                                    shape = MaterialTheme.shapes.medium
+                                )
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Error,
+                                contentDescription = "Error",
+                                tint = MaterialTheme.colorScheme.onError,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = error,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onError
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Icon(
+                                imageVector = Icons.Filled.Close,
+                                contentDescription = "Dismiss",
+                                tint = MaterialTheme.colorScheme.onError,
+                                modifier = Modifier
+                                    .size(20.dp)
+                                    .clickable { viewModel.clearError() }
+                            )
+                        }
+                    }
+                }
+                
                 // Connection error banner
                 if (!isConnected) {
                     Row(
