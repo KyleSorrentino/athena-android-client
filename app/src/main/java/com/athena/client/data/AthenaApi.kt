@@ -1,18 +1,34 @@
 package com.athena.client.data
 
+import com.athena.client.data.models.JobStatusResponse
+import com.athena.client.data.models.JobSubmitResponse
 import com.athena.client.data.models.PromptRequest
 import com.athena.client.data.models.PromptResponse
+import com.athena.client.data.models.SpeakRequest
 import com.athena.client.data.models.VoicesResponse
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.POST
+import retrofit2.http.Path
 
 interface AthenaApi {
     @POST("api/prompt")
     suspend fun prompt(@Body request: PromptRequest): PromptResponse
 
+    @POST("api/prompt/job")
+    suspend fun submitPromptJob(@Body request: PromptRequest): JobSubmitResponse
+
+    @GET("api/prompt/job/{jobId}")
+    suspend fun getJobStatus(@Path("jobId") jobId: String): JobStatusResponse
+
     @GET("api/voices")
     suspend fun getVoices(): VoicesResponse
+
+    @POST("api/speak/job")
+    suspend fun submitSpeakJob(@Body request: SpeakRequest): JobSubmitResponse
+
+    @GET("api/speak/job/{jobId}")
+    suspend fun getSpeakJobStatus(@Path("jobId") jobId: String): JobStatusResponse
 
     @GET("health")
     suspend fun health(): Unit

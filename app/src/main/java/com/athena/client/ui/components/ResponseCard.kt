@@ -2,17 +2,21 @@ package com.athena.client.ui.components
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -27,13 +31,24 @@ fun ResponseCard(
     hasAudio: Boolean,
     isPlaying: Boolean,
     onPlayClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isTranscript: Boolean = false
 ) {
+    val containerColor = if (isTranscript) {
+        MaterialTheme.colorScheme.secondaryContainer
+    } else {
+        MaterialTheme.colorScheme.surface
+    }
+    
+    val contentColor = if (isTranscript) {
+        MaterialTheme.colorScheme.onSecondaryContainer
+    } else {
+        MaterialTheme.colorScheme.onSurface
+    }
+
     Card(
         modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        ),
+        colors = CardDefaults.cardColors(containerColor = containerColor),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Row(
@@ -45,11 +60,31 @@ fun ResponseCard(
             Column(
                 modifier = Modifier.weight(1f)
             ) {
+                if (isTranscript) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.RecordVoiceOver,
+                            contentDescription = null,
+                            tint = contentColor.copy(alpha = 0.7f),
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = "Transcript",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = contentColor.copy(alpha = 0.7f),
+                            modifier = Modifier.padding(start = 4.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+                
                 Markdown(
                     content = text,
                     colors = markdownColor(
-                        text = MaterialTheme.colorScheme.onSurface,
-                        codeText = MaterialTheme.colorScheme.onSurface,
+                        text = contentColor,
+                        codeText = contentColor,
                         codeBackground = MaterialTheme.colorScheme.surfaceVariant,
                         dividerColor = MaterialTheme.colorScheme.outline
                     ),

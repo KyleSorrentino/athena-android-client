@@ -56,10 +56,19 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.athena.client.audio.AudioPlayer
 import com.athena.client.speech.SpeechRecognizerManager
 import com.athena.client.ui.components.MicButton
+import com.athena.client.ui.components.MimicButton
 import com.athena.client.ui.components.ResponseCard
+import com.athena.client.ui.components.SpeakButton
+import com.athena.client.ui.components.SpeakDialog
 import com.athena.client.ui.components.ThinkingIndicator
 import com.athena.client.ui.components.VoiceSelector
 import com.athena.client.viewmodel.MainViewModel
+import com.athena.client.viewmodel.ResponseType
+
+private enum class ListenMode {
+    PROMPT,
+    MIMIC
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -73,9 +82,10 @@ fun MainScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val listState = rememberLazyListState()
     
-    // Keep screen on while loading or playing audio
-    LaunchedEffect(uiState.isLoading, uiState.playingResponseId) {
-        view.keepScreenOn = uiState.isLoading || uiState.playingResponseId != null
+    // Keep screen on while loading, polling, or playing audio
+    val showProgress = uiState.isLoading || uiState.isPolling
+    LaunchedEffect(showProgress, uiState.playingResponseId) {
+        view.keepScreenOn = showProgress || uiState.playingResponseId != null
     }
     
     var hasPermission by remember {
@@ -96,19 +106,28 @@ fun MainScreen(
     val audioPlayer = remember { AudioPlayer() }
     
     var speechAvailable by remember { mutableStateOf(true) }
+    var showSpeakDialog by remember { mutableStateOf(false) }
+    var listenMode by remember { mutableStateOf(ListenMode.PROMPT) }
+    var isMimicListening by remember { mutableStateOf(false) }
     
     val speechRecognizer = remember {
         SpeechRecognizerManager(
             context = context,
             onResult = { result ->
-                viewModel.sendPrompt(result)
+                when (listenMode) {
+                    ListenMode.PROMPT -> viewModel.sendPrompt(result)
+                    ListenMode.MIMIC -> viewModel.speakText(result)
+                }
+                isMimicListening = false
             },
             onPartialResult = {},
             onError = { error ->
                 viewModel.setListening(false)
+                isMimicListening = false
             },
             onListeningStateChanged = { listening ->
                 viewModel.setListening(listening)
+                if (!listening) isMimicListening = false
             }
         ).also { speechAvailable = it.initialize() }
     }
@@ -153,6 +172,13 @@ fun MainScreen(
             }
         }
         previousResponseCount = uiState.responses.size
+    }
+
+    if (showSpeakDialog) {
+        SpeakDialog(
+            onDismiss = { showSpeakDialog = false },
+            onConfirm = { text -> viewModel.speakText(text) }
+        )
     }
 
     Scaffold(
@@ -202,6 +228,7 @@ fun MainScreen(
                         text = response.text,
                         hasAudio = response.audioBase64 != null,
                         isPlaying = uiState.playingResponseId == response.id,
+                        isTranscript = response.type == ResponseType.TRANSCRIPT,
                         onPlayClick = {
                             if (uiState.playingResponseId == response.id) {
                                 audioPlayer.stop()
@@ -225,7 +252,7 @@ fun MainScreen(
                     )
                 }
                 
-                if (uiState.isLoading) {
+                if (showProgress) {
                     item {
                         ThinkingIndicator(
                             modifier = Modifier.fillMaxWidth()
@@ -331,9 +358,37 @@ fun MainScreen(
                 Row(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    SpeakButton(
+                        onClick = { showSpeakDialog = true },
+                        enabled = isConnected && !showProgress
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    MimicButton(
+                        isListening = isMimicListening,
+                        isProcessing = showProgress || !speechAvailable || !isConnected,
+                        onClick = {
+                            if (!isConnected) return@MimicButton
+                            if (!speechAvailable) return@MimicButton
+                            
+                            if (!hasPermission) {
+                                permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                return@MimicButton
+                            }
+                            
+                            if (uiState.isListening) {
+                                speechRecognizer.stopListening()
+                                isMimicListening = false
+                            } else if (!showProgress) {
+                                listenMode = ListenMode.MIMIC
+                                isMimicListening = true
+                                speechRecognizer.startListening()
+                            }
+                        }
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
                     MicButton(
-                        isListening = uiState.isListening,
-                        isProcessing = uiState.isLoading || !speechAvailable || !isConnected,
+                        isListening = uiState.isListening && !isMimicListening,
+                        isProcessing = showProgress || !speechAvailable || !isConnected,
                         onClick = {
                             if (!isConnected) return@MicButton
                             if (!speechAvailable) return@MicButton
@@ -345,7 +400,8 @@ fun MainScreen(
                             
                             if (uiState.isListening) {
                                 speechRecognizer.stopListening()
-                            } else if (!uiState.isLoading) {
+                            } else if (!showProgress) {
+                                listenMode = ListenMode.PROMPT
                                 speechRecognizer.startListening()
                             }
                         }
