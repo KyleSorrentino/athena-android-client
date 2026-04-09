@@ -282,7 +282,7 @@ class MainViewModel : ViewModel() {
                             text = originalText,
                             audioBase64 = audio,
                             type = ResponseType.TRANSCRIPT,
-                            voice = voice
+                            voice = status.voice
                         )
                         _uiState.update { state ->
                             val newResponses = (state.responses + responseItem).sortedBy { it.timestamp }
@@ -367,7 +367,6 @@ class MainViewModel : ViewModel() {
     private suspend fun pollForCompletion(jobId: String, originalPrompt: String) {
         var currentDelay = INITIAL_POLL_DELAY_MS
         val startTime = System.currentTimeMillis()
-        val voiceUsed = _uiState.value.selectedVoice?.takeIf { it != VOICE_NONE }
         
         while (_uiState.value.isPolling && _uiState.value.currentJobId == jobId) {
             if (System.currentTimeMillis() - startTime > MAX_POLL_TIME_MS) {
@@ -395,7 +394,7 @@ class MainViewModel : ViewModel() {
                         val responseItem = ResponseItem(
                             text = status.response ?: "",
                             audioBase64 = status.audio,
-                            voice = if (status.audio != null) voiceUsed else null
+                            voice = status.voice
                         )
                         _uiState.update { state ->
                             val newResponses = (state.responses + responseItem).sortedBy { it.timestamp }

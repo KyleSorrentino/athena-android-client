@@ -15,5 +15,6 @@ data class JobStatusResponse(
     val status: String,
     val response: String? = null,
     val audio: String? = null,
-    val error: String? = null
+    val error: String? = null,
+    val voice: String? = null
 )
