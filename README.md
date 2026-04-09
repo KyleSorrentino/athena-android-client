@@ -4,19 +4,18 @@ A minimalistic Android voice assistant client for Athena. Speak to the app, and 
 
 ## Features
 
-- Voice input via Android SpeechRecognizer
-- Voice selection dropdown (re-queries available voices on each click)
-- "None" option for text-only responses (no audio)
-- Markdown-formatted text responses
-- Auto-plays audio when response arrives
-- Replay button for each response with audio
-- Animated "Thinking..." indicator while waiting
-- Keeps screen awake during loading and audio playback
-- Multi-server support with continuous health monitoring (polls every 5 seconds)
-- Connection status indicator with automatic retry
-- Memory-only conversation history (cleared on app restart)
-- Portrait orientation only
-- Dark theme by default
+- **Voice Input** - Speak prompts via Android SpeechRecognizer
+- **Voice Selection** - Dropdown to select TTS voice (queries server for available voices)
+- **Three Input Modes**:
+  - **Mic Button** - Speak a prompt, get AI response with optional TTS
+  - **Speak Button** - Type text and have it spoken in selected voice
+  - **Mimic Button** - Speak text directly, STT converts it, then TTS speaks it back in selected voice
+- **Markdown Rendering** - AI responses displayed with formatting
+- **Audio Playback** - Auto-plays TTS audio, with replay button
+- **Async Job Polling** - Uses job-based API for reliable long-running requests
+- **Multi-Server Support** - Continuous health monitoring with automatic failover
+- **Connection Status** - Visual indicator with automatic retry
+- **Dark Theme** - Material 3 dark theme by default
 
 ## Requirements
 
@@ -42,7 +41,7 @@ api.servers=https://your-athena-server.com,http://fallback-server.local
 api.token=your-auth-token
 ```
 
-Multiple servers can be specified as a comma-separated list. The app continuously polls all servers' `/health` endpoints every 5 seconds and selects the first healthy server from the list when making requests. If all servers are down, the UI shows a connection error and disables input until a server becomes available.
+Multiple servers can be specified as a comma-separated list. The app continuously polls all servers' `/health` endpoints every 5 seconds and selects the first healthy server when making requests.
 
 > **Security Note**: The `local.properties` file is gitignored and should never be committed. The API credentials are baked into the APK at build time. This approach is suitable for personal use only.
 
@@ -61,7 +60,37 @@ make release
 ```bash
 # Install debug build on connected device
 make install
+
+# If upgrade fails due to signature mismatch
+make uninstall
+make install
 ```
+
+## Usage
+
+### Input Modes
+
+| Button | Icon | Function |
+|--------|------|----------|
+| **Mic** | Microphone | Voice-to-prompt: Speak → STT → LLM → TTS → Audio |
+| **Speak** | Volume | Text-to-speech: Type text → TTS → Audio |
+| **Mimic** | Copy | Voice cloning: Speak → STT → TTS → Audio (no LLM) |
+
+### Voice Selection
+
+- Tap the voice dropdown to see available voices from active TTS agents
+- Select "None" for text-only responses (no audio)
+- Voice list refreshes each time the dropdown opens
+
+### Workflow
+
+1. Select a voice (or "None" for text-only)
+2. **For AI conversation**: Tap the mic button, speak your question
+3. **For TTS only**: Type in the text field, tap the speak button
+4. **For voice mimicking**: Tap the mimic button, speak what you want repeated
+5. Wait for "Thinking..." to complete
+6. View markdown response and hear audio playback
+7. Tap replay button to hear audio again
 
 ## Build Commands
 
@@ -70,7 +99,7 @@ make install
 | `make build` | Build debug APK using Docker |
 | `make debug` | Build debug APK using Docker |
 | `make release` | Build release APK using Docker |
-| `make install` | Install debug APK on connected device (requires ADB) |
+| `make install` | Install debug APK on connected device |
 | `make uninstall` | Uninstall app from connected device |
 | `make clean` | Clean build artifacts |
 | `make docker-clean` | Remove Docker build image |
@@ -96,6 +125,10 @@ athena-android-client/
 │   │   ├── ui/                      # Compose UI
 │   │   │   ├── MainScreen.kt        # Main screen composable
 │   │   │   ├── components/          # UI components
+│   │   │   │   ├── MicButton.kt     # Voice prompt button
+│   │   │   │   ├── SpeakButton.kt   # TTS-only button
+│   │   │   │   ├── MimicButton.kt   # Voice mimic button
+│   │   │   │   └── VoiceSelector.kt # Voice dropdown
 │   │   │   └── theme/               # App theme
 │   │   └── viewmodel/
 │   │       └── MainViewModel.kt     # State management
@@ -110,17 +143,29 @@ athena-android-client/
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/prompt` | POST | Send prompt, receive text + audio response |
-| `/api/voices` | GET | List available voices (future use) |
+| `/api/prompt/job` | POST | Submit async prompt job |
+| `/api/prompt/job/{id}` | GET | Poll for prompt result |
+| `/api/speak/job` | POST | Submit async TTS-only job |
+| `/api/speak/job/{id}` | GET | Poll for TTS result |
+| `/api/voices` | GET | List available voices |
 | `/health` | GET | Server health check |
 
-### Request Format
+### Request Format (Prompt)
 
 ```json
 {
   "prompt": "What's the weather like?",
   "speaker": true,
-  "speaker_voice": null
+  "speaker_voice": "selected-voice"
+}
+```
+
+### Request Format (Speak)
+
+```json
+{
+  "text": "Hello, this is a test.",
+  "speaker_voice": "selected-voice"
 }
 ```
 
@@ -128,6 +173,8 @@ athena-android-client/
 
 ```json
 {
+  "job_id": "...",
+  "status": "completed",
   "response": "The weather is sunny with a high of 75°F.",
   "audio": "<base64-encoded WAV>"
 }
@@ -155,33 +202,7 @@ buildConfigField(
 
 ### Release Signing
 
-For release builds, configure signing in `app/build.gradle.kts`. **Do not commit credentials to source control** - use `local.properties` or environment variables:
-
-```kotlin
-signingConfigs {
-    create("release") {
-        storeFile = file(localProperties.getProperty("signing.storeFile", ""))
-        storePassword = localProperties.getProperty("signing.storePassword", "")
-        keyAlias = localProperties.getProperty("signing.keyAlias", "")
-        keyPassword = localProperties.getProperty("signing.keyPassword", "")
-    }
-}
-
-buildTypes {
-    release {
-        signingConfig = signingConfigs.getByName("release")
-        // ...
-    }
-}
-```
-
-Then in `local.properties`:
-```properties
-signing.storeFile=/path/to/keystore.jks
-signing.storePassword=your-store-password
-signing.keyAlias=your-key-alias
-signing.keyPassword=your-key-password
-```
+For release builds, configure signing in `app/build.gradle.kts`. **Do not commit credentials to source control** - use `local.properties` or environment variables.
 
 ## Troubleshooting
 
@@ -193,15 +214,21 @@ signing.keyPassword=your-key-password
 
 ### Connection errors
 
-1. Verify the API URL in `local.properties`
+1. Verify the API URLs in `local.properties`
 2. Ensure the device has internet connectivity
-3. Check that the server is reachable from the device's network
+3. Check that at least one server is reachable
 
 ### Audio not playing
 
 1. Check device volume settings
-2. Verify the server is returning audio in the response
+2. Verify a voice is selected (not "None")
 3. Check logcat for AudioPlayer errors
+
+### Job stuck in "Thinking..."
+
+1. Jobs timeout after 30 minutes on the server
+2. If no TTS agents are available, job will fail with "No agents available"
+3. Restart the app to clear local state
 
 ## Credits
 
@@ -210,8 +237,3 @@ App icon generated with [Easy-Peasy.AI](https://easy-peasy.ai/ai-image-generator
 ## License
 
 MIT License - See [LICENSE](LICENSE) for details.
-
----
-
-**TODO**:
-- Implement proper multi-user authentication support instead of baked-in credentials
